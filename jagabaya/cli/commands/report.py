@@ -21,7 +21,7 @@ def report_generate(
         "markdown",
         "--format",
         "-f",
-        help="Report format (markdown, html)",
+        help="Report format (markdown, html, pdf)",
     ),
     output: str = typer.Option(
         None,
@@ -32,8 +32,21 @@ def report_generate(
 ):
     """Generate a report from a session."""
     from jagabaya.core.session import SessionManager
-    from jagabaya.agents.reporter import ReporterAgent
-    from jagabaya.models.config import JagabayaConfig
+    from jagabaya.reports.generator import ReportGenerator, ReportConfig
+    
+    # Validate format
+    if format not in ("markdown", "html", "pdf"):
+        console.print(f"[red]Invalid format: {format}. Use markdown, html, or pdf[/]")
+        raise typer.Exit(1)
+    
+    # Check for PDF dependencies
+    if format == "pdf":
+        try:
+            import fpdf
+        except ImportError:
+            console.print("[red]PDF export requires fpdf2. Install it with:[/]")
+            console.print("  pip install fpdf2")
+            raise typer.Exit(1)
 
     # Load session
     manager = SessionManager()
@@ -44,27 +57,23 @@ def report_generate(
         raise typer.Exit(1)
 
     console.print(f"[bold]Generating {format} report for session {session_id}...[/]")
-
-    async def generate():
-        config = JagabayaConfig.load()
-        reporter = ReporterAgent(config.llm)
-
-        report = await reporter.run(session)
-        return reporter.render_report(report, format)
-
-    content = asyncio.run(generate())
-
+    
+    # Generate report
+    config = ReportConfig()
+    generator = ReportGenerator(config)
+    report_data = generator.generate(session)
+    
     # Determine output path
     if output:
         output_path = Path(output)
     else:
         ext = "md" if format == "markdown" else format
         output_path = manager.get_session_dir(session) / f"report.{ext}"
+    
+    # Save report
+    saved_path = generator.save(report_data, output_path, format)
 
-    with open(output_path, "w") as f:
-        f.write(content)
-
-    console.print(f"[green]Report saved to: {output_path}[/]")
+    console.print(f"[green]Report saved to: {saved_path}[/]")
 
 
 @app.command("view")

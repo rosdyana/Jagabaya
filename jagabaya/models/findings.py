@@ -62,11 +62,19 @@ class FindingCategory(str, Enum):
     LFI = "lfi"
     RFI = "rfi"
     IDOR = "idor"
+    XXE = "xxe"
+    CSRF = "csrf"
+    OPEN_REDIRECT = "open_redirect"
+    FILE_INCLUSION = "file_inclusion"
+    COMMAND_INJECTION = "command_injection"
+    DIRECTORY_TRAVERSAL = "directory_traversal"
     
-    # Authentication
+    # Authentication & Authorization
     WEAK_CREDENTIALS = "weak_credentials"
     AUTH_BYPASS = "auth_bypass"
     SESSION_MANAGEMENT = "session_management"
+    AUTHENTICATION = "authentication"
+    AUTHORIZATION = "authorization"
     
     # Encryption
     SSL_TLS_ISSUE = "ssl_tls_issue"
@@ -75,12 +83,16 @@ class FindingCategory(str, Enum):
     
     # Information Disclosure
     INFO_DISCLOSURE = "info_disclosure"
+    INFORMATION_DISCLOSURE = "information_disclosure"
     SENSITIVE_DATA = "sensitive_data"
+    SENSITIVE_FILE_EXPOSURE = "sensitive_file_exposure"
     DEBUG_ENABLED = "debug_enabled"
     
     # Configuration
     MISCONFIGURATION = "misconfiguration"
     DEFAULT_CREDENTIALS = "default_credentials"
+    SECURITY_HEADER_MISSING = "security_header_missing"
+    CORS_MISCONFIGURATION = "cors_misconfiguration"
     
     # CMS/Framework
     CMS_VULNERABILITY = "cms_vulnerability"

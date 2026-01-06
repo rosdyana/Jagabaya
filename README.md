@@ -23,6 +23,8 @@
 - **Planner Agent**: Strategic decision-making for pentest workflow
 - **Executor Agent**: Tool selection and execution
 - **Analyst Agent**: Finding analysis and correlation
+- **Validator Agent**: Validates findings to reduce false positives
+- **Correlator Agent**: Identifies attack paths and correlates related findings
 - **Reporter Agent**: Professional report generation
 
 ### 20+ Integrated Security Tools
@@ -43,6 +45,7 @@
 ### Professional Reporting
 - Markdown reports (Git-friendly)
 - HTML reports (Visual, shareable)
+- PDF reports (Professional, printable)
 - MITRE ATT&CK mapping
 - Executive summaries
 
@@ -62,6 +65,12 @@ source venv/bin/activate  # Linux/macOS
 
 # Install in development mode
 pip install -e ".[dev]"
+
+# Install with PDF report support
+pip install -e ".[pdf]"
+
+# Install with all optional dependencies
+pip install -e ".[all]"
 ```
 
 ### Configuration
@@ -89,6 +98,9 @@ jagabaya run example.com --verbose
 # Specify output directory
 jagabaya run example.com --output-dir ./my-results
 
+# Enable finding validation (reduces false positives)
+jagabaya run example.com --validate
+
 # Global flags (apply to all commands)
 jagabaya --quiet run example.com      # Suppress non-essential output
 jagabaya --debug run example.com      # Enable debug logging
@@ -107,6 +119,7 @@ jagabaya tools install nmap --force    # Install a specific tool
 
 # Generate report from previous session
 jagabaya report generate <session-id> --format html
+jagabaya report generate <session-id> --format pdf  # Requires fpdf2
 
 # Session management
 jagabaya session list              # List all sessions

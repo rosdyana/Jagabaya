@@ -255,5 +255,108 @@ class CorrelatedFinding(BaseModel):
     combined_risk: str = Field(description="Combined risk assessment")
 
 
+class ValidationResult(BaseModel):
+    """
+    Result of validating a single finding.
+    """
+    
+    finding_id: str = Field(
+        description="ID of the finding being validated"
+    )
+    status: Literal["verified", "likely_valid", "needs_review", "likely_false_positive"] = Field(
+        description="Validation status"
+    )
+    confidence: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Confidence score (0.0-1.0)"
+    )
+    evidence_quality: Literal["strong", "moderate", "weak", "insufficient"] = Field(
+        default="moderate",
+        description="Quality of supporting evidence"
+    )
+    reasoning: str = Field(
+        description="Explanation of the validation assessment"
+    )
+    verification_steps: list[str] = Field(
+        default_factory=list,
+        description="Additional steps to verify if uncertain"
+    )
+    severity_adjustment: Literal["increase", "unchanged", "decrease"] = Field(
+        default="unchanged",
+        description="Whether severity should be adjusted"
+    )
+    adjusted_severity: Literal["critical", "high", "medium", "low", "info"] | None = Field(
+        default=None,
+        description="New severity if adjustment recommended"
+    )
+
+
+class BatchValidationResult(BaseModel):
+    """
+    Result of batch validation of multiple findings.
+    """
+    
+    validated_findings: list[ValidationResult] = Field(
+        default_factory=list,
+        description="Validation results for each finding"
+    )
+    summary: str = Field(
+        description="Summary of the validation process"
+    )
+    false_positive_count: int = Field(
+        default=0,
+        description="Number of likely false positives identified"
+    )
+    verified_count: int = Field(
+        default=0,
+        description="Number of verified findings"
+    )
+    needs_review_count: int = Field(
+        default=0,
+        description="Number of findings needing manual review"
+    )
+
+
+class CorrelationAnalysis(BaseModel):
+    """
+    Full correlation analysis result from the Correlator agent.
+    """
+    
+    attack_paths: list[AttackPath] = Field(
+        default_factory=list,
+        description="Identified attack paths/chains"
+    )
+    correlated_groups: list[CorrelatedFinding] = Field(
+        default_factory=list,
+        description="Groups of related findings"
+    )
+    priority_targets: list[PriorityTarget] = Field(
+        default_factory=list,
+        description="High-priority targets for further testing"
+    )
+    overall_risk_assessment: str = Field(
+        description="Overall security posture assessment"
+    )
+    risk_score: float = Field(
+        ge=0.0,
+        le=10.0,
+        description="Overall risk score (0-10)"
+    )
+    key_insights: list[str] = Field(
+        default_factory=list,
+        description="Key insights from correlation analysis"
+    )
+
+
+class PriorityTarget(BaseModel):
+    """A high-priority target identified through correlation."""
+    
+    target: str = Field(description="Target identifier (host, URL, etc.)")
+    reason: str = Field(description="Why this target is high priority")
+    related_findings: list[str] = Field(description="IDs of related findings")
+    suggested_actions: list[str] = Field(default_factory=list, description="Suggested next steps")
+
+
 # Enable forward references
 ReportSection.model_rebuild()

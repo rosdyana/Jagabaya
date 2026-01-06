@@ -15,6 +15,8 @@ from jagabaya.agents.planner import PlannerAgent
 from jagabaya.agents.executor import ExecutorAgent
 from jagabaya.agents.analyst import AnalystAgent
 from jagabaya.agents.reporter import ReporterAgent
+from jagabaya.agents.validator import ValidatorAgent
+from jagabaya.agents.correlator import CorrelatorAgent
 from jagabaya.core.session import SessionManager
 from jagabaya.core.scope import ScopeValidator
 from jagabaya.core.storage import SessionStorage
@@ -57,6 +59,7 @@ class Orchestrator:
         on_finding: Callable[[Finding], None] | None = None,
         on_progress: Callable[[str, float], None] | None = None,
         verbose: bool = False,
+        validate_findings: bool = False,
     ):
         """
         Initialize the Orchestrator.
@@ -67,9 +70,11 @@ class Orchestrator:
             on_finding: Callback for new findings
             on_progress: Callback for progress updates
             verbose: Enable verbose output
+            validate_findings: Enable finding validation to reduce false positives
         """
         self.config = config
         self.verbose = verbose
+        self.validate_findings = validate_findings
 
         # Callbacks
         self.on_action = on_action
@@ -113,6 +118,16 @@ class Orchestrator:
         )
 
         self.reporter = ReporterAgent(
+            config=llm_config,
+            verbose=verbose,
+        )
+        
+        self.validator = ValidatorAgent(
+            config=llm_config,
+            verbose=verbose,
+        )
+        
+        self.correlator = CorrelatorAgent(
             config=llm_config,
             verbose=verbose,
         )
@@ -341,6 +356,10 @@ class Orchestrator:
 
             # Mark session as complete
             session.completed_at = datetime.now()
+            
+            # Run post-scan analysis
+            await self._run_post_scan_analysis(session)
+            
             self.session_manager.save_session(session)
             self.storage.mark_completed(session.session_id, "completed")
 
@@ -481,6 +500,156 @@ class Orchestrator:
 
         self._log(f"Extracted {len(analysis.findings)} findings")
 
+    async def _run_post_scan_analysis(
+        self,
+        session: SessionState,
+    ) -> None:
+        """
+        Run post-scan analysis including correlation and optional validation.
+
+        Args:
+            session: Current session
+        """
+        if not session.findings:
+            self._log("No findings to analyze")
+            return
+
+        # Run correlation analysis
+        self._log("Running correlation analysis...")
+        self._progress("Correlating findings", 0.95)
+        
+        try:
+            correlation = await self.correlator.run(session)
+            
+            # Store correlation results in session metadata
+            session.metadata = session.metadata or {}
+            session.metadata["correlation"] = {
+                "attack_paths": [p.model_dump() for p in correlation.attack_paths],
+                "risk_score": correlation.risk_score,
+                "key_insights": correlation.key_insights,
+                "priority_targets": [t.model_dump() for t in correlation.priority_targets],
+            }
+            
+            self._log(f"Identified {len(correlation.attack_paths)} attack paths")
+            self._log(f"Overall risk score: {correlation.risk_score}/10")
+            
+        except Exception as e:
+            self._log(f"Correlation analysis failed: {e}")
+
+        # Run validation if enabled
+        if self.validate_findings:
+            await self._validate_findings(session)
+
+    async def _validate_findings(
+        self,
+        session: SessionState,
+    ) -> None:
+        """
+        Validate findings to reduce false positives.
+
+        Args:
+            session: Current session
+        """
+        self._log(f"Validating {len(session.findings)} findings...")
+        self._progress("Validating findings", 0.97)
+        
+        try:
+            validation_result = await self.validator.validate_batch(session)
+            
+            # Apply validation results
+            validated_count = 0
+            fp_count = 0
+            
+            for result in validation_result.validated_findings:
+                # Find the matching finding
+                for finding in session.findings:
+                    if finding.id == result.finding_id:
+                        await self.validator.apply_validation(finding, result)
+                        
+                        if result.status == "verified":
+                            validated_count += 1
+                        elif result.status == "likely_false_positive":
+                            fp_count += 1
+                        break
+            
+            self._log(f"Validation complete: {validated_count} verified, {fp_count} likely false positives")
+            
+            # Store validation summary
+            session.metadata = session.metadata or {}
+            session.metadata["validation"] = {
+                "verified_count": validation_result.verified_count,
+                "false_positive_count": validation_result.false_positive_count,
+                "needs_review_count": validation_result.needs_review_count,
+                "summary": validation_result.summary,
+            }
+            
+        except Exception as e:
+            self._log(f"Validation failed: {e}")
+
+    async def validate_session_findings(
+        self,
+        session: SessionState | None = None,
+    ) -> dict:
+        """
+        Manually validate findings for a session.
+
+        Args:
+            session: Session to validate (uses current if not provided)
+
+        Returns:
+            Validation results dictionary
+        """
+        session = session or self._current_session
+        if not session:
+            raise ValueError("No session available for validation")
+
+        self._log(f"Validating {len(session.findings)} findings...")
+        
+        result = await self.validator.validate_batch(session)
+        
+        # Apply results
+        for validation in result.validated_findings:
+            for finding in session.findings:
+                if finding.id == validation.finding_id:
+                    await self.validator.apply_validation(finding, validation)
+                    break
+        
+        return {
+            "verified": result.verified_count,
+            "false_positives": result.false_positive_count,
+            "needs_review": result.needs_review_count,
+            "summary": result.summary,
+        }
+
+    async def correlate_findings(
+        self,
+        session: SessionState | None = None,
+    ) -> dict:
+        """
+        Run correlation analysis on session findings.
+
+        Args:
+            session: Session to analyze (uses current if not provided)
+
+        Returns:
+            Correlation results dictionary
+        """
+        session = session or self._current_session
+        if not session:
+            raise ValueError("No session available for correlation")
+
+        self._log("Running correlation analysis...")
+        
+        result = await self.correlator.run(session)
+        
+        return {
+            "attack_paths": [p.model_dump() for p in result.attack_paths],
+            "risk_score": result.risk_score,
+            "risk_assessment": result.overall_risk_assessment,
+            "key_insights": result.key_insights,
+            "priority_targets": [t.model_dump() for t in result.priority_targets],
+        }
+
     async def generate_report(
         self,
         session: SessionState | None = None,
@@ -550,6 +719,8 @@ class Orchestrator:
             "executor": self.executor.get_stats(),
             "analyst": self.analyst.get_stats(),
             "reporter": self.reporter.get_stats(),
+            "validator": self.validator.get_stats(),
+            "correlator": self.correlator.get_stats(),
             "tools_available": len(self.tool_registry.get_available()),
             "tools_total": len(self.tool_registry.get_all()),
         }

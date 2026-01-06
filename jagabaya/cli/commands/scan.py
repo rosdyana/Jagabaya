@@ -62,6 +62,11 @@ def scan_run(
     safe_mode: bool = typer.Option(True, "--safe-mode/--no-safe-mode"),
     output_dir: str = typer.Option("./jagabaya_output", "--output-dir", "-o"),
     verbose: bool = typer.Option(False, "--verbose", "-V"),
+    validate: bool = typer.Option(
+        False,
+        "--validate",
+        help="Validate findings to reduce false positives (uses additional LLM calls)",
+    ),
 ):
     """Run an autonomous security scan."""
     from jagabaya.cli.ui.console import show_banner
@@ -77,6 +82,7 @@ def scan_run(
             safe_mode=safe_mode,
             output_dir=output_dir,
             verbose=verbose,
+            validate_findings=validate,
         )
     )
 
@@ -110,6 +116,7 @@ async def run_scan(
     verbose: bool,
     model: str | None = None,
     provider: str | None = None,
+    validate_findings: bool = False,
 ) -> None:
     """Run the main scan workflow."""
     global _current_orchestrator, _shutdown_requested
@@ -185,6 +192,7 @@ async def run_scan(
         on_progress=on_progress,
         on_action=on_action,
         verbose=verbose,
+        validate_findings=validate_findings,
     )
     _current_orchestrator = orchestrator
 

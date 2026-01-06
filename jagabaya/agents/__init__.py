@@ -10,6 +10,8 @@ from jagabaya.agents.planner import PlannerAgent
 from jagabaya.agents.executor import ExecutorAgent
 from jagabaya.agents.analyst import AnalystAgent
 from jagabaya.agents.reporter import ReporterAgent
+from jagabaya.agents.validator import ValidatorAgent
+from jagabaya.agents.correlator import CorrelatorAgent
 
 __all__ = [
     "BaseAgent",
@@ -17,4 +19,6 @@ __all__ = [
     "ExecutorAgent",
     "AnalystAgent",
     "ReporterAgent",
+    "ValidatorAgent",
+    "CorrelatorAgent",
 ]
