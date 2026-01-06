@@ -19,7 +19,7 @@ from jagabaya.models.tools import ToolExecution
 
 class ScanPhase(str, Enum):
     """Phases of a penetration test."""
-    
+
     INITIALIZATION = "initialization"
     RECONNAISSANCE = "reconnaissance"
     SCANNING = "scanning"
@@ -29,7 +29,7 @@ class ScanPhase(str, Enum):
     POST_EXPLOITATION = "post_exploitation"
     REPORTING = "reporting"
     COMPLETED = "completed"
-    
+
     @property
     def description(self) -> str:
         """Get description for the phase."""
@@ -49,7 +49,7 @@ class ScanPhase(str, Enum):
 
 class AIDecision(BaseModel):
     """Record of an AI agent decision."""
-    
+
     id: str = Field(default_factory=lambda: uuid4().hex[:8])
     timestamp: datetime = Field(default_factory=datetime.now)
     agent: str = Field(description="Agent that made the decision")
@@ -59,7 +59,7 @@ class AIDecision(BaseModel):
     parameters: dict[str, Any] = Field(default_factory=dict)
     tokens_used: int = Field(default=0, description="Tokens consumed")
     cost: float = Field(default=0.0, description="Estimated cost in USD")
-    
+
     def to_summary(self) -> str:
         """Get a brief summary."""
         return f"[{self.agent}] {self.action}"
@@ -67,7 +67,7 @@ class AIDecision(BaseModel):
 
 class CompletedAction(BaseModel):
     """Record of a completed action in the scan."""
-    
+
     id: str = Field(default_factory=lambda: uuid4().hex[:8])
     timestamp: datetime = Field(default_factory=datetime.now)
     phase: "ScanPhase" = Field(description="Phase when action was completed")
@@ -77,7 +77,7 @@ class CompletedAction(BaseModel):
     target: str | None = Field(default=None, description="Target of the action")
     success: bool = Field(default=True, description="Whether the action succeeded")
     duration_seconds: float | None = Field(default=None, description="Duration in seconds")
-    
+
     def to_summary(self) -> str:
         """Get a brief summary."""
         tool_str = f" ({self.tool})" if self.tool else ""
@@ -86,7 +86,7 @@ class CompletedAction(BaseModel):
 
 class DiscoveredAsset(BaseModel):
     """An asset discovered during scanning."""
-    
+
     type: str = Field(description="Asset type (subdomain, ip, port, service, etc.)")
     value: str = Field(description="Asset value")
     source: str = Field(description="Tool that discovered it")
@@ -97,71 +97,73 @@ class DiscoveredAsset(BaseModel):
 class SessionState(BaseModel):
     """
     Maintains the state of a penetration testing session.
-    
+
     This is the core state management class that tracks:
     - Current phase and progress
     - Discovered assets and findings
     - Tool execution history
     - AI decision history
     """
-    
+
     # Session identity
     session_id: str = Field(default_factory=lambda: datetime.now().strftime("%Y%m%d_%H%M%S"))
     target: str = Field(description="Primary target")
-    
+
     # Timing
     started_at: datetime = Field(default_factory=datetime.now)
     completed_at: datetime | None = Field(default=None)
-    
+
     # Phase tracking
     current_phase: ScanPhase = Field(default=ScanPhase.INITIALIZATION)
     completed_phases: list[ScanPhase] = Field(default_factory=list)
-    
+
     # Scope
     scope: list[str] = Field(default_factory=list, description="In-scope targets")
     blacklist: list[str] = Field(default_factory=list, description="Out-of-scope targets")
-    
+
     # Action tracking
     completed_actions: list[CompletedAction] = Field(default_factory=list)
     pending_actions: list[str] = Field(default_factory=list)
     current_action: str | None = Field(default=None)
-    
+
     # Discoveries
     findings: list[Finding] = Field(default_factory=list)
     discovered_assets: list[DiscoveredAsset] = Field(default_factory=list)
-    
+
     # Context for AI
-    context: dict[str, Any] = Field(default_factory=lambda: {
-        "target": "",
-        "scope": [],
-        "subdomains": [],
-        "ip_addresses": [],
-        "open_ports": [],
-        "services": [],
-        "technologies": [],
-        "urls": [],
-    })
-    
+    context: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "target": "",
+            "scope": [],
+            "subdomains": [],
+            "ip_addresses": [],
+            "open_ports": [],
+            "services": [],
+            "technologies": [],
+            "urls": [],
+        }
+    )
+
     # History
     tool_executions: list[ToolExecution] = Field(default_factory=list)
     ai_decisions: list[AIDecision] = Field(default_factory=list)
-    
+
     # Cost tracking
     total_tokens: int = Field(default=0)
     total_cost: float = Field(default=0.0)
-    
+
     # Status
     is_running: bool = Field(default=False)
     error: str | None = Field(default=None)
-    
+
     def add_finding(self, finding: Finding) -> None:
         """Add a security finding."""
         self.findings.append(finding)
-    
+
     def add_findings(self, findings: list[Finding]) -> None:
         """Add multiple findings."""
         self.findings.extend(findings)
-    
+
     def add_asset(self, asset_type: str, value: str, source: str, **metadata: Any) -> None:
         """Add a discovered asset."""
         asset = DiscoveredAsset(
@@ -171,7 +173,7 @@ class SessionState(BaseModel):
             metadata=metadata,
         )
         self.discovered_assets.append(asset)
-        
+
         # Also update context
         if asset_type == "subdomain" and value not in self.context.get("subdomains", []):
             self.context.setdefault("subdomains", []).append(value)
@@ -188,11 +190,11 @@ class SessionState(BaseModel):
         elif asset_type == "url":
             if value not in self.context.get("urls", []):
                 self.context.setdefault("urls", []).append(value)
-    
+
     def add_tool_execution(self, execution: ToolExecution) -> None:
         """Record a tool execution."""
         self.tool_executions.append(execution)
-    
+
     def add_ai_decision(
         self,
         agent: str,
@@ -216,36 +218,49 @@ class SessionState(BaseModel):
         self.ai_decisions.append(decision)
         self.total_tokens += tokens
         self.total_cost += cost
-    
+
     def update_phase(self, phase: ScanPhase) -> None:
         """Update the current phase."""
         if self.current_phase != phase:
             if self.current_phase not in self.completed_phases:
                 self.completed_phases.append(self.current_phase)
             self.current_phase = phase
-    
-    def mark_action_complete(self, action: str) -> None:
-        """Mark an action as complete."""
-        if action not in self.completed_actions:
-            self.completed_actions.append(action)
+
+    def mark_action_complete(
+        self,
+        action: str,
+        tool: str | None = None,
+        duration_seconds: float | None = None,
+        success: bool = True,
+    ) -> None:
+        """Mark an action as complete by creating a CompletedAction record."""
+        completed = CompletedAction(
+            phase=self.current_phase,
+            action=action,
+            tool=tool,
+            target=self.target,
+            success=success,
+            duration_seconds=duration_seconds,
+        )
+        self.completed_actions.append(completed)
         if action in self.pending_actions:
             self.pending_actions.remove(action)
         if self.current_action == action:
             self.current_action = None
-    
+
     def get_findings_summary(self) -> FindingSummary:
         """Get summary of findings."""
         return FindingSummary.from_findings(self.findings)
-    
+
     def get_context_for_ai(self) -> str:
         """
         Format the current state as context for AI agents.
-        
+
         This provides a structured summary that helps the AI
         understand what has been discovered and done so far.
         """
         summary = self.get_findings_summary()
-        
+
         context = f"""# Current Session State
 
 ## Target
@@ -275,7 +290,7 @@ class SessionState(BaseModel):
                 context += f"- {sub}\n"
             if len(self.context["subdomains"]) > 20:
                 context += f"- ... and {len(self.context['subdomains']) - 20} more\n"
-        
+
         if self.context.get("open_ports"):
             context += f"\n### Open Ports ({len(self.context['open_ports'])})\n"
             for port_info in self.context["open_ports"][:20]:
@@ -283,36 +298,36 @@ class SessionState(BaseModel):
                     context += f"- {port_info.get('port', port_info)}\n"
                 else:
                     context += f"- {port_info}\n"
-        
+
         if self.context.get("technologies"):
             context += f"\n### Technologies\n"
             for tech in self.context["technologies"][:20]:
                 context += f"- {tech}\n"
-        
+
         if self.context.get("services"):
             context += f"\n### Services\n"
             for svc in self.context["services"][:20]:
                 context += f"- {svc}\n"
-        
+
         context += f"\n## Completed Actions\n"
         for action in self.completed_actions[-10:]:
             if isinstance(action, CompletedAction):
                 context += f"- {action.to_summary()}\n"
             else:
                 context += f"- {action}\n"
-        
+
         return context.strip()
-    
+
     def save(self, directory: Path) -> Path:
         """Save session state to file."""
         directory.mkdir(parents=True, exist_ok=True)
         filepath = directory / f"session_{self.session_id}.json"
-        
+
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(self.model_dump(mode="json"), f, indent=2, default=str)
-        
+
         return filepath
-    
+
     @classmethod
     def load(cls, filepath: Path) -> "SessionState":
         """Load session state from file."""
@@ -323,43 +338,45 @@ class SessionState(BaseModel):
 
 class SessionResult(BaseModel):
     """Final result of a completed session."""
-    
+
     session_id: str
     target: str
     status: str = Field(description="completed, failed, cancelled")
-    
+
     # Timing
     started_at: datetime
     completed_at: datetime
     duration_seconds: float
-    
+
     # Results
     findings: list[Finding] = Field(default_factory=list)
     findings_summary: FindingSummary
     total_findings: int
     total_tools_executed: int
     total_ai_decisions: int
-    
+
     # Cost
     total_tokens: int
     total_cost: float
-    
+
     # Files
     report_paths: list[str] = Field(default_factory=list)
     session_file: str | None = None
-    
+
     @property
     def total_tools_run(self) -> int:
         """Alias for total_tools_executed for CLI compatibility."""
         return self.total_tools_executed
-    
+
     @property
     def total_ai_calls(self) -> int:
         """Alias for total_ai_decisions for CLI compatibility."""
         return self.total_ai_decisions
-    
+
     @classmethod
-    def from_state(cls, state: SessionState, report_paths: list[str] | None = None) -> "SessionResult":
+    def from_state(
+        cls, state: SessionState, report_paths: list[str] | None = None
+    ) -> "SessionResult":
         """Create result from session state."""
         now = datetime.now()
         return cls(

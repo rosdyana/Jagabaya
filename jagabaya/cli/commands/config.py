@@ -36,7 +36,7 @@ def config_show():
                 f"  Safe Mode: {config.scan.safe_mode}\n"
                 f"  Stealth Mode: {config.scan.stealth_mode}\n"
                 f"  Tool Timeout: {config.scan.tool_timeout}s\n"
-                f"  Max Concurrent: {config.scan.max_concurrent_tools}\n"
+                f"  Max Concurrent: {config.scan.max_parallel_tools}\n"
                 f"\n[bold]Output Configuration:[/]\n"
                 f"  Output Dir: {config.output.output_dir}\n"
                 f"  Report Format: {config.output.report_format}",
@@ -45,6 +45,135 @@ def config_show():
         )
     except Exception as e:
         console.print(f"[red]Error loading config: {e}[/]")
+
+
+@app.command("validate")
+def config_validate(
+    config_file: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Configuration file to validate",
+    ),
+):
+    """Validate configuration file and check for issues."""
+    from jagabaya.models.config import JagabayaConfig, SUPPORTED_PROVIDERS
+
+    errors = []
+    warnings = []
+
+    try:
+        config = JagabayaConfig.load(config_file)
+        console.print("[green]Configuration file parsed successfully[/]\n")
+
+        # Check LLM configuration
+        if not config.llm.is_configured():
+            errors.append(
+                f"LLM provider '{config.llm.provider}' requires API key. "
+                f"Set {config.llm.provider.upper()}_API_KEY environment variable."
+            )
+
+        # Check if provider is known
+        if config.llm.provider not in SUPPORTED_PROVIDERS:
+            warnings.append(
+                f"Provider '{config.llm.provider}' is not in the list of known providers. "
+                "It may still work with LiteLLM."
+            )
+
+        # Check output directory
+        output_dir = Path(config.output.directory)
+        if not output_dir.exists():
+            warnings.append(
+                f"Output directory '{output_dir}' does not exist. It will be created on first scan."
+            )
+
+        # Check scan settings
+        if config.scan.max_steps > 100:
+            warnings.append(
+                f"max_steps is set to {config.scan.max_steps}. "
+                "High values may result in very long scans."
+            )
+
+        # Print results
+        if errors:
+            console.print("[bold red]Errors:[/]")
+            for error in errors:
+                console.print(f"  [red]- {error}[/]")
+            console.print()
+
+        if warnings:
+            console.print("[bold yellow]Warnings:[/]")
+            for warning in warnings:
+                console.print(f"  [yellow]- {warning}[/]")
+            console.print()
+
+        if not errors and not warnings:
+            console.print("[bold green]Configuration is valid![/]")
+        elif errors:
+            raise typer.Exit(1)
+
+    except FileNotFoundError:
+        console.print("[red]Configuration file not found.[/]")
+        console.print("Run 'jagabaya config init' to create one.")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error validating config: {e}[/]")
+        raise typer.Exit(1)
+
+
+@app.command("test-llm")
+def config_test_llm(
+    config_file: str = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Configuration file to use",
+    ),
+):
+    """Test LLM connection with a simple prompt."""
+    from jagabaya.models.config import JagabayaConfig
+
+    try:
+        config = JagabayaConfig.load(config_file)
+
+        if not config.llm.is_configured():
+            console.print(f"[red]LLM provider '{config.llm.provider}' is not configured.[/]")
+            console.print(f"Set {config.llm.provider.upper()}_API_KEY environment variable.")
+            raise typer.Exit(1)
+
+        console.print(f"Testing connection to [bold]{config.llm.provider}[/]...")
+        console.print(f"Model: [cyan]{config.llm.get_model_string()}[/]")
+
+        # Try to make a simple LLM call
+        try:
+            import litellm
+
+            response = litellm.completion(
+                model=config.llm.get_model_string(),
+                messages=[{"role": "user", "content": "Say 'Hello' in one word."}],
+                max_tokens=10,
+                timeout=30,
+                api_key=config.llm.get_api_key(),
+                api_base=config.llm.get_api_base(),
+            )
+
+            reply = response.choices[0].message.content.strip()
+            console.print(f"\n[green]Success![/] LLM responded: [cyan]{reply}[/]")
+            console.print(
+                f"Tokens used: {response.usage.total_tokens if response.usage else 'N/A'}"
+            )
+
+        except ImportError:
+            console.print("[red]LiteLLM is not installed.[/]")
+            console.print("Install it with: pip install litellm")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]LLM connection failed: {e}[/]")
+            raise typer.Exit(1)
+
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/]")
+        raise typer.Exit(1)
 
 
 @app.command("init")
@@ -76,7 +205,7 @@ def init_config(config_file: str) -> None:
             "safe_mode": True,
             "stealth_mode": False,
             "tool_timeout": 300,
-            "max_concurrent_tools": 3,
+            "max_parallel_tools": 3,
             "rate_limit": 10,
         },
         "scope": {
@@ -147,7 +276,7 @@ def config_set(
             value = int(value)
         elif value.replace(".", "").isdigit():
             value = float(value)
-    except:
+    except (ValueError, AttributeError):
         pass
 
     current[keys[-1]] = value

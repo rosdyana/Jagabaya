@@ -17,6 +17,7 @@ from jagabaya.agents.analyst import AnalystAgent
 from jagabaya.agents.reporter import ReporterAgent
 from jagabaya.core.session import SessionManager
 from jagabaya.core.scope import ScopeValidator
+from jagabaya.core.storage import SessionStorage
 from jagabaya.models.config import JagabayaConfig, LLMConfig
 from jagabaya.models.session import (
     SessionState,
@@ -81,6 +82,9 @@ class Orchestrator:
             auto_save=True,
         )
 
+        # SQLite storage for resume capability
+        self.storage = SessionStorage(config.output.output_dir)
+
         self.tool_registry = ToolRegistry()
         # Registry uses lazy initialization, no need to call register_all
 
@@ -118,6 +122,8 @@ class Orchestrator:
         self._scope_validator: ScopeValidator | None = None
         self._running = False
         self._should_stop = False
+        self._current_step = 0
+        self._max_steps = 100
 
     async def run(
         self,
@@ -142,6 +148,7 @@ class Orchestrator:
         """
         self._running = True
         self._should_stop = False
+        self._max_steps = max_steps
 
         # Create session
         session = self.session_manager.create_session(
@@ -161,10 +168,108 @@ class Orchestrator:
         self._log(f"Session ID: {session.session_id}")
         self._progress("Initializing", 0.0)
 
+        # Save initial state to SQLite
+        self.storage.save_session(session, current_step=0, max_steps=max_steps, status="running")
+
         try:
-            step = 0
+            await self._run_scan_loop(session, max_steps, start_step=0)
+        except Exception as e:
+            self._log(f"Error during scan: {e}")
+            session.error = str(e)
+            session.completed_at = datetime.now()
+            self.session_manager.save_session(session)
+            self.storage.save_session(session, self._current_step, max_steps, status="failed")
+            raise
+        finally:
+            self._running = False
+
+        return self.session_manager.create_result(session)
+
+    async def resume(
+        self,
+        session_id: str,
+        max_steps: int | None = None,
+    ) -> SessionResult:
+        """
+        Resume an interrupted session.
+
+        Args:
+            session_id: Session ID to resume
+            max_steps: Override max steps (optional)
+
+        Returns:
+            SessionResult with findings and summary
+        """
+        # Load session from SQLite
+        session = self.storage.load_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+
+        # Get session info for step tracking
+        info = self.storage.get_session_info(session_id)
+        if not info:
+            raise ValueError(f"Session info not found for {session_id}")
+
+        if info["status"] not in ("running", "interrupted"):
+            raise ValueError(f"Session {session_id} is not resumable (status: {info['status']})")
+
+        start_step = info["current_step"]
+        total_max_steps = max_steps or info["max_steps"]
+
+        self._running = True
+        self._should_stop = False
+        self._current_session = session
+        self._max_steps = total_max_steps
+
+        # Clear any previous error
+        session.error = None
+
+        # Initialize scope validator
+        self._scope_validator = ScopeValidator(
+            scope=session.scope,
+            blacklist=session.blacklist,
+        )
+
+        self._log(f"Resuming session {session_id} from step {start_step}")
+        self._log(f"Target: {session.target}")
+        self._progress("Resuming", start_step / total_max_steps)
+
+        # Update status to running
+        self.storage.save_session(session, start_step, total_max_steps, status="running")
+
+        try:
+            await self._run_scan_loop(session, total_max_steps, start_step=start_step)
+        except Exception as e:
+            self._log(f"Error during scan: {e}")
+            session.error = str(e)
+            session.completed_at = datetime.now()
+            self.session_manager.save_session(session)
+            self.storage.save_session(session, self._current_step, total_max_steps, status="failed")
+            raise
+        finally:
+            self._running = False
+
+        return self.session_manager.create_result(session)
+
+    async def _run_scan_loop(
+        self,
+        session: SessionState,
+        max_steps: int,
+        start_step: int = 0,
+    ) -> None:
+        """
+        Run the main scan loop.
+
+        Args:
+            session: Session state
+            max_steps: Maximum steps
+            start_step: Step to start from (for resume)
+        """
+        step = start_step
+        try:
             while step < max_steps and not self._should_stop:
                 step += 1
+                self._current_step = step
 
                 self._log(f"\n{'=' * 50}")
                 self._log(f"Step {step}/{max_steps} - Phase: {session.current_phase.value}")
@@ -204,7 +309,7 @@ class Orchestrator:
                     await self._execute_tool_action(
                         session,
                         decision.tool,
-                        decision.target_override or target,
+                        decision.target_override or session.target,
                         decision.parameters,
                     )
 
@@ -217,7 +322,17 @@ class Orchestrator:
                 )
                 session.completed_actions.append(action)
 
-                # Auto-save
+                # Save to SQLite after each step
+                self.storage.save_session(session, step, max_steps, status="running")
+                self.storage.add_action(
+                    session.session_id,
+                    step,
+                    decision.next_action,
+                    tool=decision.tool,
+                    target=decision.target_override or session.target,
+                )
+
+                # Auto-save JSON
                 self.session_manager.maybe_auto_save(session)
 
                 # Callback
@@ -227,19 +342,17 @@ class Orchestrator:
             # Mark session as complete
             session.completed_at = datetime.now()
             self.session_manager.save_session(session)
+            self.storage.mark_completed(session.session_id, "completed")
 
             self._progress("Complete", 1.0)
             self._log(f"\nScan complete. Found {len(session.findings)} findings.")
 
-        except Exception as e:
-            self._log(f"Error during scan: {e}")
-            session.completed_at = datetime.now()
+        except KeyboardInterrupt:
+            # Handle graceful interrupt
+            self._log("\nScan interrupted by user")
+            self.storage.mark_interrupted(session.session_id, "User interrupted")
             self.session_manager.save_session(session)
             raise
-        finally:
-            self._running = False
-
-        return self.session_manager.create_result(session)
 
     async def _execute_tool_action(
         self,
@@ -397,6 +510,13 @@ class Orchestrator:
         """Request the orchestrator to stop after the current step."""
         self._should_stop = True
         self._log("Stop requested")
+
+        # Save current state as interrupted
+        if self._current_session:
+            self.storage.mark_interrupted(
+                self._current_session.session_id, "Stop requested by user"
+            )
+            self.session_manager.save_session(self._current_session)
 
     @property
     def is_running(self) -> bool:

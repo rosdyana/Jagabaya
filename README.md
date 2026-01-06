@@ -89,6 +89,11 @@ jagabaya run example.com --verbose
 # Specify output directory
 jagabaya run example.com --output-dir ./my-results
 
+# Global flags (apply to all commands)
+jagabaya --quiet run example.com      # Suppress non-essential output
+jagabaya --debug run example.com      # Enable debug logging
+jagabaya --no-color run example.com   # Disable colored output
+
 # List available tools
 jagabaya tools list
 
@@ -103,8 +108,33 @@ jagabaya tools install nmap --force    # Install a specific tool
 # Generate report from previous session
 jagabaya report generate <session-id> --format html
 
-# List previous sessions
-jagabaya session list
+# Session management
+jagabaya session list              # List all sessions
+jagabaya session list --resumable  # List only resumable sessions
+jagabaya session show <session-id> # Show session details
+
+# Resume interrupted scans
+jagabaya scan resume <session-id>
+jagabaya scan resume <session-id> --max-steps 200
+
+# Configuration management
+jagabaya config show               # Show current config
+jagabaya config validate           # Validate config file
+jagabaya config test-llm           # Test LLM connection
+```
+
+## Graceful Shutdown
+
+Jagabaya supports graceful shutdown with automatic session saving:
+
+- Press `Ctrl+C` once to request graceful shutdown (completes current step, saves session)
+- Press `Ctrl+C` twice to force exit
+
+When a scan is interrupted, you'll see instructions to resume:
+```bash
+Scan interrupted by user
+Session saved. Resume with:
+  jagabaya scan resume abc123def456
 ```
 
 ## Configuration
@@ -188,6 +218,67 @@ Jagabaya uses [LiteLLM](https://github.com/BerriAI/litellm) for multi-provider s
 - **Illegal Use**: Unauthorized access, malicious activities, any form of cyber attack
 
 **You are fully responsible for ensuring you have explicit written permission before testing any system.**
+
+## Troubleshooting
+
+### LLM Connection Issues
+
+```bash
+# Validate your configuration
+jagabaya config validate
+
+# Test LLM connection
+jagabaya config test-llm
+
+# Check environment variables
+jagabaya config env
+```
+
+### No API Key Configured
+
+Set your API key using one of these methods:
+
+```bash
+# Option 1: Environment variable
+export OPENAI_API_KEY="your-key"
+
+# Option 2: .env file
+echo "OPENAI_API_KEY=your-key" >> .env
+
+# Option 3: Config file
+jagabaya config set llm.api_key YOUR_KEY
+
+# Option 4: Use local models (no API key needed)
+jagabaya run example.com --provider ollama --model llama3
+```
+
+### Resuming Failed Scans
+
+If a scan was interrupted or failed:
+
+```bash
+# List resumable sessions
+jagabaya session list --resumable
+
+# Resume the session
+jagabaya scan resume <session-id>
+
+# Resume with different max steps
+jagabaya scan resume <session-id> --max-steps 200
+```
+
+### Tool Installation Issues
+
+```bash
+# Check which tools are missing
+jagabaya tools check
+
+# View install commands without executing
+jagabaya tools install --all
+
+# Install specific category
+jagabaya tools install --category recon --force
+```
 
 ## Contributing
 

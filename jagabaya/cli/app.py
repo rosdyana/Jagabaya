@@ -7,6 +7,7 @@ This module defines the main Typer application and entry point.
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Optional
 
 import typer
@@ -43,6 +44,18 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
+# Global state for CLI options
+class CLIState:
+    """Global CLI state for options like quiet, debug, color."""
+
+    quiet: bool = False
+    debug: bool = False
+    no_color: bool = False
+
+
+cli_state = CLIState()
+
+
 @app.callback()
 def main_callback(
     version: bool = typer.Option(
@@ -53,14 +66,56 @@ def main_callback(
         callback=version_callback,
         is_eager=True,
     ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress non-essential output",
+    ),
+    debug: bool = typer.Option(
+        False,
+        "--debug",
+        help="Enable debug output",
+    ),
+    no_color: bool = typer.Option(
+        False,
+        "--no-color",
+        help="Disable colored output",
+    ),
 ):
     """
     Jagabaya - AI-Powered Penetration Testing CLI
-    
+
     An autonomous security assessment tool that uses AI to plan and execute
     penetration tests, analyze results, and generate reports.
+
+    Global Options:
+        --quiet, -q    Suppress non-essential output
+        --debug        Enable debug logging
+        --no-color     Disable colored output
     """
-    pass
+    cli_state.quiet = quiet
+    cli_state.debug = debug
+    cli_state.no_color = no_color
+
+    # Set environment variable for no-color (used by Rich)
+    if no_color:
+        os.environ["NO_COLOR"] = "1"
+
+    # Set debug logging level
+    if debug:
+        import logging
+
+        logging.basicConfig(level=logging.DEBUG)
+
+
+def get_console() -> Console:
+    """Get a console instance with current CLI state applied."""
+    return Console(
+        quiet=cli_state.quiet,
+        force_terminal=not cli_state.no_color if not cli_state.no_color else None,
+        no_color=cli_state.no_color,
+    )
 
 
 @app.command()
@@ -116,11 +171,11 @@ def run(
 ):
     """
     Run an autonomous penetration test.
-    
+
     This command starts an AI-driven security assessment of the target.
     The AI will plan and execute various security tests, analyze results,
     and report findings.
-    
+
     Example:
         jagabaya run example.com
         jagabaya run example.com --scope "*.example.com"
@@ -128,20 +183,22 @@ def run(
     """
     from jagabaya.cli.ui.console import show_banner, show_scan_progress
     from jagabaya.cli.commands.scan import run_scan
-    
+
     show_banner()
-    
-    asyncio.run(run_scan(
-        target=target,
-        scope=scope or [],
-        blacklist=blacklist or [],
-        max_steps=max_steps,
-        safe_mode=safe_mode,
-        output_dir=output_dir,
-        verbose=verbose,
-        model=model,
-        provider=provider,
-    ))
+
+    asyncio.run(
+        run_scan(
+            target=target,
+            scope=scope or [],
+            blacklist=blacklist or [],
+            max_steps=max_steps,
+            safe_mode=safe_mode,
+            output_dir=output_dir,
+            verbose=verbose,
+            model=model,
+            provider=provider,
+        )
+    )
 
 
 @app.command()
@@ -155,11 +212,11 @@ def init(
 ):
     """
     Initialize Jagabaya configuration.
-    
+
     Creates a default configuration file and checks for required tools.
     """
     from jagabaya.cli.commands.config import init_config
-    
+
     init_config(config_file)
 
 
@@ -175,9 +232,9 @@ def quick(
 ):
     """
     Run a quick pre-defined scan workflow.
-    
+
     Quick scans run a predefined set of tools without AI planning.
-    
+
     Scan types:
     - recon: Subdomain enumeration and basic reconnaissance
     - web: Web vulnerability scanning
@@ -185,7 +242,7 @@ def quick(
     - full: Complete assessment (all phases)
     """
     from jagabaya.cli.commands.scan import run_quick_scan
-    
+
     asyncio.run(run_quick_scan(target, scan_type))
 
 

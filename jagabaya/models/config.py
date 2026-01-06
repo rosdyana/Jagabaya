@@ -186,12 +186,6 @@ class ScanConfig(BaseModel):
     max_parallel_tools: int = Field(
         default=3, ge=1, le=10, description="Maximum tools to run in parallel"
     )
-    max_concurrent_tools: int = Field(
-        default=3,
-        ge=1,
-        le=10,
-        description="Maximum tools to run concurrently (alias for max_parallel_tools)",
-    )
     tool_timeout: int = Field(
         default=300, ge=30, le=3600, description="Default tool execution timeout in seconds"
     )
