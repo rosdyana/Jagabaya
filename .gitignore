@@ -85,6 +85,7 @@ dmypy.json
 # Jagabaya specific
 reports/
 sessions/
+jagabaya_output/
 *.log
 jagabaya.yaml
 config.yaml
