@@ -20,27 +20,29 @@ console = Console()
 def config_show():
     """Show current configuration."""
     from jagabaya.models.config import JagabayaConfig
-    
+
     try:
-        config = JagabayaConfig.from_env()
-        
-        console.print(Panel.fit(
-            f"[bold]LLM Configuration:[/]\n"
-            f"  Provider: {config.llm.provider}\n"
-            f"  Model: {config.llm.model}\n"
-            f"  Temperature: {config.llm.temperature}\n"
-            f"  Max Tokens: {config.llm.max_tokens}\n"
-            f"  API Key: {'Set' if config.llm.api_key else '[red]Not Set[/]'}\n"
-            f"\n[bold]Scan Configuration:[/]\n"
-            f"  Safe Mode: {config.scan.safe_mode}\n"
-            f"  Stealth Mode: {config.scan.stealth_mode}\n"
-            f"  Tool Timeout: {config.scan.tool_timeout}s\n"
-            f"  Max Concurrent: {config.scan.max_concurrent_tools}\n"
-            f"\n[bold]Output Configuration:[/]\n"
-            f"  Output Dir: {config.output.output_dir}\n"
-            f"  Report Format: {config.output.report_format}",
-            title="[bold blue]Jagabaya Configuration[/]",
-        ))
+        config = JagabayaConfig.load()
+
+        console.print(
+            Panel.fit(
+                f"[bold]LLM Configuration:[/]\n"
+                f"  Provider: {config.llm.provider}\n"
+                f"  Model: {config.llm.model}\n"
+                f"  Temperature: {config.llm.temperature}\n"
+                f"  Max Tokens: {config.llm.max_tokens}\n"
+                f"  API Key: {'Set' if config.llm.api_key else '[red]Not Set[/]'}\n"
+                f"\n[bold]Scan Configuration:[/]\n"
+                f"  Safe Mode: {config.scan.safe_mode}\n"
+                f"  Stealth Mode: {config.scan.stealth_mode}\n"
+                f"  Tool Timeout: {config.scan.tool_timeout}s\n"
+                f"  Max Concurrent: {config.scan.max_concurrent_tools}\n"
+                f"\n[bold]Output Configuration:[/]\n"
+                f"  Output Dir: {config.output.output_dir}\n"
+                f"  Report Format: {config.output.report_format}",
+                title="[bold blue]Jagabaya Configuration[/]",
+            )
+        )
     except Exception as e:
         console.print(f"[red]Error loading config: {e}[/]")
 
@@ -61,7 +63,7 @@ def config_init(
 def init_config(config_file: str) -> None:
     """Create a new configuration file."""
     import yaml
-    
+
     default_config = {
         "llm": {
             "provider": "openai",
@@ -88,18 +90,18 @@ def init_config(config_file: str) -> None:
             "save_raw_output": True,
         },
     }
-    
+
     config_path = Path(config_file)
-    
+
     if config_path.exists():
         overwrite = typer.confirm(f"{config_file} already exists. Overwrite?")
         if not overwrite:
             console.print("[yellow]Cancelled[/]")
             return
-    
+
     with open(config_path, "w") as f:
         yaml.dump(default_config, f, default_flow_style=False, sort_keys=False)
-    
+
     console.print(f"[green]Configuration saved to {config_file}[/]")
     console.print("\n[bold]Next steps:[/]")
     console.print("1. Set your API key:")
@@ -116,25 +118,25 @@ def config_set(
 ):
     """Set a configuration value."""
     import yaml
-    
+
     config_file = Path("jagabaya.yaml")
-    
+
     if not config_file.exists():
         console.print("[yellow]No config file found. Creating one...[/]")
         init_config("jagabaya.yaml")
-    
+
     with open(config_file) as f:
         config = yaml.safe_load(f) or {}
-    
+
     # Parse the key path
     keys = key.split(".")
     current = config
-    
+
     for k in keys[:-1]:
         if k not in current:
             current[k] = {}
         current = current[k]
-    
+
     # Try to parse value as appropriate type
     try:
         if value.lower() == "true":
@@ -147,12 +149,12 @@ def config_set(
             value = float(value)
     except:
         pass
-    
+
     current[keys[-1]] = value
-    
+
     with open(config_file, "w") as f:
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-    
+
     console.print(f"[green]Set {key} = {value}[/]")
 
 
@@ -162,20 +164,20 @@ def config_get(
 ):
     """Get a configuration value."""
     import yaml
-    
+
     config_file = Path("jagabaya.yaml")
-    
+
     if not config_file.exists():
         console.print("[red]No config file found. Run 'jagabaya config init' first.[/]")
         raise typer.Exit(1)
-    
+
     with open(config_file) as f:
         config = yaml.safe_load(f) or {}
-    
+
     # Parse the key path
     keys = key.split(".")
     current = config
-    
+
     try:
         for k in keys:
             current = current[k]
@@ -200,12 +202,12 @@ def config_env():
         ("JAGABAYA_CONFIG", "Path to config file"),
         ("JAGABAYA_OUTPUT_DIR", "Output directory"),
     ]
-    
+
     table = Table(title="Environment Variables")
     table.add_column("Variable", style="bold")
     table.add_column("Description")
     table.add_column("Status")
-    
+
     for var, desc in env_vars:
         value = os.environ.get(var)
         if value:
@@ -216,7 +218,7 @@ def config_env():
                 status = f"[green]{value}[/]"
         else:
             status = "[dim]Not set[/]"
-        
+
         table.add_row(var, desc, status)
-    
+
     console.print(table)

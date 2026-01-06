@@ -34,36 +34,36 @@ def report_generate(
     from jagabaya.core.session import SessionManager
     from jagabaya.agents.reporter import ReporterAgent
     from jagabaya.models.config import JagabayaConfig
-    
+
     # Load session
     manager = SessionManager()
     session = manager.load_session(session_id)
-    
+
     if not session:
         console.print(f"[red]Session '{session_id}' not found[/]")
         raise typer.Exit(1)
-    
+
     console.print(f"[bold]Generating {format} report for session {session_id}...[/]")
-    
+
     async def generate():
-        config = JagabayaConfig.from_env()
+        config = JagabayaConfig.load()
         reporter = ReporterAgent(config.llm)
-        
+
         report = await reporter.run(session)
         return reporter.render_report(report, format)
-    
+
     content = asyncio.run(generate())
-    
+
     # Determine output path
     if output:
         output_path = Path(output)
     else:
         ext = "md" if format == "markdown" else format
         output_path = manager.get_session_dir(session) / f"report.{ext}"
-    
+
     with open(output_path, "w") as f:
         f.write(content)
-    
+
     console.print(f"[green]Report saved to: {output_path}[/]")
 
 
@@ -74,27 +74,27 @@ def report_view(
     """View a session's report."""
     from jagabaya.core.session import SessionManager
     from rich.markdown import Markdown
-    
+
     manager = SessionManager()
     session_dir = manager.output_dir / session_id
-    
+
     # Look for report files
     report_files = [
         session_dir / "report.md",
         session_dir / "report.html",
     ]
-    
+
     for report_file in report_files:
         if report_file.exists():
             with open(report_file) as f:
                 content = f.read()
-            
+
             if report_file.suffix == ".md":
                 console.print(Markdown(content))
             else:
                 console.print(content)
             return
-    
+
     console.print(f"[yellow]No report found for session {session_id}[/]")
     console.print("Run 'jagabaya report generate' to create one.")
 
@@ -117,16 +117,16 @@ def report_export(
 ):
     """Export findings from a session."""
     from jagabaya.core.session import SessionManager
-    
+
     manager = SessionManager()
     session = manager.load_session(session_id)
-    
+
     if not session:
         console.print(f"[red]Session '{session_id}' not found[/]")
         raise typer.Exit(1)
-    
+
     content = manager.export_findings(session, format)
-    
+
     if output:
         output_path = Path(output)
         with open(output_path, "w") as f:
@@ -143,21 +143,21 @@ def report_summary(
     """Show a quick summary of findings."""
     from jagabaya.core.session import SessionManager
     from rich.table import Table
-    
+
     manager = SessionManager()
     session = manager.load_session(session_id)
-    
+
     if not session:
         console.print(f"[red]Session '{session_id}' not found[/]")
         raise typer.Exit(1)
-    
+
     # Summary table
     summary = session.get_findings_summary()
-    
+
     table = Table(title=f"Findings Summary - {session_id}")
     table.add_column("Severity", style="bold")
     table.add_column("Count", justify="right")
-    
+
     colors = {
         "critical": "red",
         "high": "orange1",
@@ -165,7 +165,7 @@ def report_summary(
         "low": "blue",
         "info": "dim",
     }
-    
+
     for severity, count in [
         ("critical", summary.critical),
         ("high", summary.high),
@@ -178,11 +178,11 @@ def report_summary(
                 f"[{colors[severity]}]{severity.upper()}[/]",
                 str(count),
             )
-    
+
     table.add_row("[bold]Total[/]", f"[bold]{summary.total}[/]")
-    
+
     console.print(table)
-    
+
     # Top findings
     if session.findings:
         console.print("\n[bold]Top Findings:[/]")

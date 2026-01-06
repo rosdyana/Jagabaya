@@ -94,9 +94,6 @@ Documentation = "https://github.com/rosdyana/Jagabaya#readme"
 Repository = "https://github.com/rosdyana/Jagabaya"
 Issues = "https://github.com/rosdyana/Jagabaya/issues"
 
-[tool.setuptools]
-packages = ["jagabaya"]
-
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["jagabaya*"]
