@@ -1,0 +1,70 @@
+# Reconnaissance Workflow
+# Quick discovery of subdomains and basic information gathering
+
+name: recon
+version: "1.0"
+description: "Basic reconnaissance workflow for subdomain and technology discovery"
+author: "Jagabaya"
+
+safe_mode: true
+max_parallel: 3
+default_timeout: 300
+
+variables:
+  threads: 50
+
+phases:
+  - name: Subdomain Discovery
+    description: "Discover subdomains using passive sources"
+    steps:
+      - name: subfinder
+        tool: subfinder
+        description: "Passive subdomain enumeration"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+        parallel: true
+        on_failure: continue
+
+      - name: amass_passive
+        tool: amass
+        description: "OWASP Amass passive enumeration"
+        target: "{target}"
+        parameters:
+          passive: true
+        parallel: true
+        on_failure: continue
+        timeout: 600
+
+  - name: HTTP Discovery
+    description: "Probe discovered subdomains for HTTP services"
+    steps:
+      - name: httpx_probe
+        tool: httpx
+        description: "HTTP/HTTPS probing and technology detection"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+          tech_detect: true
+          follow_redirects: true
+        on_failure: continue
+
+  - name: Technology Detection
+    description: "Identify technologies and frameworks"
+    steps:
+      - name: whatweb
+        tool: whatweb
+        description: "Web technology fingerprinting"
+        target: "{target}"
+        parameters:
+          aggression: 1
+        on_failure: continue
+        condition: "has_urls"
+
+      - name: wafw00f
+        tool: wafw00f
+        description: "WAF detection"
+        target: "{target}"
+        parallel: true
+        on_failure: continue
+        condition: "has_urls"

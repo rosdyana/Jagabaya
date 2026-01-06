@@ -1,0 +1,143 @@
+# Full Assessment Workflow
+# Comprehensive security assessment covering all phases
+
+name: full
+version: "1.0"
+description: "Complete security assessment workflow"
+author: "Jagabaya"
+
+safe_mode: true
+max_parallel: 3
+default_timeout: 600
+
+variables:
+  threads: 50
+  rate_limit: 100
+  top_ports: 1000
+
+phases:
+  - name: Reconnaissance
+    description: "Initial information gathering"
+    steps:
+      - name: subfinder
+        tool: subfinder
+        description: "Passive subdomain enumeration"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+        parallel: true
+        on_failure: continue
+
+      - name: dnsx
+        tool: dnsx
+        description: "DNS resolution and info"
+        target: "{target}"
+        parallel: true
+        on_failure: continue
+
+  - name: HTTP Discovery
+    description: "Web service discovery"
+    steps:
+      - name: httpx
+        tool: httpx
+        description: "HTTP probing"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+          tech_detect: true
+          follow_redirects: true
+        on_failure: continue
+
+  - name: Port Scanning
+    description: "Network port scanning"
+    steps:
+      - name: nmap
+        tool: nmap
+        description: "Port scan with service detection"
+        target: "{target}"
+        parameters:
+          top_ports: "{top_ports}"
+          service_detection: true
+          scripts: "default"
+        timeout: 1200
+        on_failure: continue
+
+  - name: Technology Analysis
+    description: "Technology stack identification"
+    steps:
+      - name: whatweb
+        tool: whatweb
+        description: "Web fingerprinting"
+        target: "{target}"
+        on_failure: continue
+        condition: "has_urls"
+
+      - name: wafw00f
+        tool: wafw00f
+        description: "WAF detection"
+        target: "{target}"
+        parallel: true
+        on_failure: continue
+        condition: "has_urls"
+
+  - name: Vulnerability Scanning
+    description: "Automated vulnerability detection"
+    steps:
+      - name: nuclei
+        tool: nuclei
+        description: "Template-based vuln scanning"
+        target: "{target}"
+        parameters:
+          severity: "low,medium,high,critical"
+          rate_limit: "{rate_limit}"
+        timeout: 1800
+        on_failure: continue
+
+      - name: nikto
+        tool: nikto
+        description: "Web server scanning"
+        target: "{target}"
+        timeout: 900
+        on_failure: continue
+        condition: "has_urls"
+
+  - name: SSL/TLS Analysis
+    description: "SSL/TLS security analysis"
+    steps:
+      - name: testssl
+        tool: testssl
+        description: "SSL/TLS testing"
+        target: "{target}"
+        timeout: 600
+        on_failure: continue
+        condition: "has_urls"
+
+      - name: sslyze
+        tool: sslyze
+        description: "SSL configuration analysis"
+        target: "{target}"
+        parallel: true
+        timeout: 300
+        on_failure: continue
+        condition: "has_urls"
+
+  - name: Content Discovery
+    description: "Hidden content and endpoint discovery"
+    steps:
+      - name: gobuster
+        tool: gobuster
+        description: "Directory discovery"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+        timeout: 900
+        on_failure: continue
+        condition: "has_urls"
+
+      - name: arjun
+        tool: arjun
+        description: "Parameter discovery"
+        target: "{target}"
+        timeout: 600
+        on_failure: continue
+        condition: "has_urls"

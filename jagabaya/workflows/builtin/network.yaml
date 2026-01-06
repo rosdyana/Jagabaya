@@ -1,0 +1,56 @@
+# Network Scanning Workflow
+# Port scanning and service enumeration
+
+name: network
+version: "1.0"
+description: "Network scanning and service enumeration workflow"
+author: "Jagabaya"
+
+safe_mode: true
+max_parallel: 2
+default_timeout: 600
+
+variables:
+  top_ports: 1000
+  timing: 4
+
+phases:
+  - name: Port Discovery
+    description: "Fast port scanning to find open ports"
+    steps:
+      - name: nmap_discovery
+        tool: nmap
+        description: "Nmap TCP port scan"
+        target: "{target}"
+        parameters:
+          top_ports: "{top_ports}"
+          timing: "{timing}"
+          service_detection: true
+        timeout: 900
+        on_failure: continue
+
+  - name: Service Enumeration
+    description: "Detailed service and version detection"
+    steps:
+      - name: nmap_services
+        tool: nmap
+        description: "Service version detection"
+        target: "{target}"
+        parameters:
+          version_intensity: 7
+          scripts: "default,vuln"
+        timeout: 1200
+        on_failure: continue
+        condition: "has_open_ports"
+
+  - name: HTTP Services
+    description: "Probe discovered HTTP services"
+    steps:
+      - name: httpx_ports
+        tool: httpx
+        description: "HTTP probing on discovered ports"
+        target: "{target}"
+        parameters:
+          tech_detect: true
+        on_failure: continue
+        condition: "has_open_ports"

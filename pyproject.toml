@@ -1,0 +1,161 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jagabaya"
+version = "0.1.0"
+description = "Jagabaya - AI-Powered Penetration Testing Automation CLI with Multi-LLM Support"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Rosdyana Kusuma", email = "rosdyana.kusuma@gmail.com"}
+]
+keywords = [
+    "penetration-testing",
+    "security",
+    "ai",
+    "automation",
+    "cli",
+    "pentest",
+    "vulnerability-scanner",
+    "ethical-hacking",
+    "llm",
+    "openai",
+    "anthropic",
+    "gemini"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: System :: Networking",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    # CLI and UI
+    "typer[all]>=0.12.0",
+    "rich>=13.7.0",
+    
+    # LLM - Multi-provider support via LiteLLM
+    "litellm>=1.50.0",
+    "openai>=1.0.0",
+    
+    # Configuration and validation
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    
+    # Async and HTTP
+    "httpx>=0.26.0",
+    "aiofiles>=23.2.1",
+    
+    # Templating for reports
+    "jinja2>=3.1.3",
+    
+    # Utilities
+    "tenacity>=8.2.0",  # Retry logic
+    "structlog>=24.1.0",  # Structured logging
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "pre-commit>=3.6.0",
+]
+
+all = [
+    "jagabaya[dev]",
+]
+
+[project.scripts]
+jagabaya = "jagabaya.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/rosdyana/Jagabaya"
+Documentation = "https://github.com/rosdyana/Jagabaya#readme"
+Repository = "https://github.com/rosdyana/Jagabaya"
+Issues = "https://github.com/rosdyana/Jagabaya/issues"
+
+[tool.setuptools]
+packages = ["jagabaya"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jagabaya*"]
+
+[tool.setuptools.package-data]
+jagabaya = [
+    "workflows/builtin/*.yaml",
+    "reports/templates/*.j2",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py311", "py312"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "B008",  # do not perform function calls in argument defaults
+]
+
+[tool.ruff.isort]
+known-first-party = ["jagabaya"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

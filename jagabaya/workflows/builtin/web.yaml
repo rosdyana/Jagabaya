@@ -1,0 +1,86 @@
+# Web Security Workflow
+# Focused web application vulnerability scanning
+
+name: web
+version: "1.0"
+description: "Web application vulnerability scanning workflow"
+author: "Jagabaya"
+
+safe_mode: true
+max_parallel: 2
+default_timeout: 600
+
+variables:
+  threads: 30
+  rate_limit: 100
+
+phases:
+  - name: HTTP Discovery
+    description: "Initial HTTP reconnaissance"
+    steps:
+      - name: httpx_probe
+        tool: httpx
+        description: "HTTP probing with headers"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+          tech_detect: true
+          status_code: true
+          follow_redirects: true
+        on_failure: continue
+
+  - name: WAF Detection
+    description: "Detect web application firewalls"
+    steps:
+      - name: wafw00f
+        tool: wafw00f
+        description: "WAF fingerprinting"
+        target: "{target}"
+        on_failure: continue
+
+  - name: Vulnerability Scanning
+    description: "Automated vulnerability detection"
+    steps:
+      - name: nuclei_scan
+        tool: nuclei
+        description: "Nuclei template-based scanning"
+        target: "{target}"
+        parameters:
+          severity: "low,medium,high,critical"
+          rate_limit: "{rate_limit}"
+        timeout: 1200
+        on_failure: continue
+
+      - name: nikto_scan
+        tool: nikto
+        description: "Nikto web server scanner"
+        target: "{target}"
+        parameters:
+          ssl: true
+        timeout: 900
+        on_failure: continue
+        parallel: true
+
+  - name: SSL/TLS Analysis
+    description: "Analyze SSL/TLS configuration"
+    steps:
+      - name: testssl
+        tool: testssl
+        description: "SSL/TLS configuration testing"
+        target: "{target}"
+        timeout: 600
+        on_failure: continue
+        condition: "has_urls"
+
+  - name: Content Discovery
+    description: "Discover hidden content and directories"
+    steps:
+      - name: gobuster
+        tool: gobuster
+        description: "Directory brute-forcing"
+        target: "{target}"
+        parameters:
+          threads: "{threads}"
+        timeout: 900
+        on_failure: continue
+        condition: "has_urls"
