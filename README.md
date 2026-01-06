@@ -77,20 +77,34 @@ export OPENAI_API_KEY="your-api-key"
 ### Basic Usage
 
 ```bash
-# Autonomous AI-driven scan (default)
-jagabaya scan example.com
+# Autonomous AI-driven scan
+jagabaya run example.com
 
 # Use a specific LLM provider
-jagabaya scan example.com --provider anthropic --model claude-3-5-sonnet-20241022
+jagabaya run example.com --provider anthropic --model claude-3-5-sonnet-20241022
 
-# Use predefined workflow
-jagabaya scan example.com --mode workflow --workflow recon
+# Verbose output
+jagabaya run example.com --verbose
+
+# Specify output directory
+jagabaya run example.com --output-dir ./my-results
 
 # List available tools
 jagabaya tools list
 
+# Check which tools are installed
+jagabaya tools check
+
+# Install missing security tools
+jagabaya tools install --all           # Show install commands (dry run)
+jagabaya tools install --all --force   # Actually install all tools
+jagabaya tools install nmap --force    # Install a specific tool
+
 # Generate report from previous session
-jagabaya report --session 20250106_120000 --format html
+jagabaya report generate <session-id> --format html
+
+# List previous sessions
+jagabaya session list
 ```
 
 ## Configuration
@@ -106,6 +120,7 @@ llm:
 
 scan:
   safe_mode: true
+  stealth_mode: false
   require_confirmation: true
   max_parallel_tools: 3
   tool_timeout: 300
@@ -118,11 +133,37 @@ scope:
     - 192.168.0.0/16
 
 output:
-  directory: ./reports
-  formats:
-    - markdown
-    - html
+  directory: ./jagabaya_output
+  report_format: markdown
+  save_raw_output: true
 ```
+
+## Tool Installation
+
+Jagabaya integrates with 20+ security tools. The CLI can help you install missing tools:
+
+```bash
+# Check which tools are available
+jagabaya tools check
+
+# Show install commands for all missing tools (dry run)
+jagabaya tools install --all
+
+# Install all missing tools
+jagabaya tools install --all --force
+
+# Install tools by category
+jagabaya tools install --category recon --force
+
+# Install a specific tool
+jagabaya tools install nmap --force
+```
+
+The installer auto-detects your platform and available package managers:
+- **Linux**: apt, brew
+- **macOS**: brew
+- **Windows**: winget, scoop, choco
+- **Cross-platform**: go, pip, gem, cargo
 
 ## Supported LLM Providers
 
