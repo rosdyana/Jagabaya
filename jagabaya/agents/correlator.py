@@ -3,12 +3,14 @@ Correlator agent.
 
 The Correlator agent identifies relationships between findings,
 discovers attack paths, and provides holistic risk assessment.
+
+Integrates with AttackPathEngine for hybrid (rule + LLM) path discovery.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from jagabaya.agents.base import BaseAgent
 from jagabaya.llm.prompts.correlator import (
@@ -19,6 +21,9 @@ from jagabaya.llm.structured import CorrelationAnalysis, AttackPath, PriorityTar
 from jagabaya.models.session import SessionState
 from jagabaya.models.config import LLMConfig
 from jagabaya.models.findings import Finding, FindingSeverity
+
+if TYPE_CHECKING:
+    from jagabaya.analysis.attack_paths import AttackPathResult, AttackChain
 
 
 class CorrelatorAgent(BaseAgent[CorrelationAnalysis]):
@@ -248,3 +253,125 @@ class CorrelatorAgent(BaseAgent[CorrelationAnalysis]):
         all_tools = tools | execution_tools
         
         return ", ".join(sorted(all_tools)) if all_tools else "None"
+    
+    async def analyze_attack_paths(
+        self,
+        state: SessionState,
+        use_llm: bool = True,
+    ) -> "AttackPathResult":
+        """
+        Perform hybrid attack path analysis.
+        
+        Combines rule-based pattern matching with LLM-enhanced discovery
+        to identify attack chains in the findings.
+        
+        Args:
+            state: Current session state with findings
+            use_llm: Whether to use LLM for enhanced analysis
+        
+        Returns:
+            AttackPathResult with discovered attack chains
+        """
+        from jagabaya.analysis.attack_paths import AttackPathEngine, AttackChain as EngineChain
+        
+        # Create engine
+        engine = AttackPathEngine(use_llm=use_llm, verbose=self.verbose)
+        
+        # If using LLM, get LLM-identified paths first
+        if use_llm and state.findings:
+            self.log("Running LLM-assisted attack path discovery")
+            
+            try:
+                # Get LLM analysis
+                analysis = await self.run(state)
+                
+                # Convert LLM attack paths to engine format
+                llm_chains = self._convert_llm_paths(analysis.attack_paths, state)
+                engine.set_llm_chains(llm_chains)
+                
+                self.log(f"LLM identified {len(llm_chains)} attack paths")
+            except Exception as e:
+                self.log(f"LLM analysis failed, using rule-based only: {e}")
+        
+        # Run full analysis (rule-based + graph + LLM chains)
+        result = engine.analyze(state)
+        
+        self.log(f"Total attack paths found: {result.total_chains}")
+        
+        return result
+    
+    def _convert_llm_paths(
+        self,
+        llm_paths: list[AttackPath],
+        state: SessionState,
+    ) -> list["AttackChain"]:
+        """Convert LLM-generated AttackPath to engine AttackChain format."""
+        from jagabaya.analysis.attack_paths import AttackChain as EngineChain, PathNode, NodeType
+        
+        chains: list["AttackChain"] = []
+        
+        for i, path in enumerate(llm_paths):
+            # Create nodes from steps
+            nodes: list[PathNode] = []
+            
+            for j, step in enumerate(path.steps):
+                # Try to find matching finding
+                matching_finding = self._find_matching_finding(step, state.findings)
+                
+                if matching_finding:
+                    node = PathNode.from_finding(matching_finding)
+                else:
+                    # Create action node for LLM-described step
+                    node = PathNode(
+                        id=f"llm_{i}_{j}",
+                        node_type=NodeType.ACTION,
+                        label=step[:50],
+                        description=step,
+                    )
+                
+                nodes.append(node)
+            
+            if nodes:
+                # Build edges
+                edges = []
+                for k in range(len(nodes) - 1):
+                    edges.append((nodes[k].id, nodes[k + 1].id, "leads to"))
+                
+                chain = EngineChain(
+                    id=f"llm_chain_{i}",
+                    name=path.name,
+                    description=f"LLM-identified: {path.name}",
+                    nodes=nodes,
+                    edges=edges,
+                    score=0.0,  # Will be scored by engine
+                    risk_level=path.risk_level,
+                    mitigations=path.mitigations,
+                    attack_type=path.name,
+                )
+                chains.append(chain)
+        
+        return chains
+    
+    def _find_matching_finding(
+        self,
+        step_description: str,
+        findings: list[Finding],
+    ) -> Finding | None:
+        """Try to match a step description to a finding."""
+        step_lower = step_description.lower()
+        
+        for finding in findings:
+            # Check if finding title appears in step
+            if finding.title.lower() in step_lower:
+                return finding
+            
+            # Check if finding ID appears
+            if finding.id in step_description:
+                return finding
+            
+            # Check category keywords
+            category = finding.category.value.replace("_", " ")
+            if category in step_lower:
+                return finding
+        
+        return None

@@ -452,3 +452,155 @@ All testing was performed within the defined scope and in accordance with the ru
             title="Scope",
             content=content,
         )
+    
+    def generate_attack_paths_section(
+        self,
+        state: SessionState,
+        attack_path_result: Any = None,
+    ) -> ReportSection:
+        """
+        Generate the attack paths section with Mermaid diagrams.
+        
+        Args:
+            state: Current session state
+            attack_path_result: Optional pre-computed AttackPathResult
+        
+        Returns:
+            ReportSection with attack path diagrams
+        """
+        from jagabaya.analysis.attack_paths import AttackPathEngine
+        from jagabaya.analysis.renderers import MermaidRenderer, ASCIIRenderer
+        
+        # Use provided result or compute from state
+        if attack_path_result is None:
+            engine = AttackPathEngine(use_llm=False, verbose=False)
+            attack_path_result = engine.analyze(state)
+        
+        if not attack_path_result.chains:
+            return ReportSection(
+                title="Attack Paths",
+                content="No attack paths were identified from the current findings.",
+            )
+        
+        lines = []
+        
+        # Summary
+        lines.append("## Attack Path Summary")
+        lines.append("")
+        lines.append(f"**Total Paths Identified:** {attack_path_result.total_chains}")
+        lines.append("")
+        lines.append("| Risk Level | Count |")
+        lines.append("|------------|-------|")
+        if attack_path_result.critical_chains > 0:
+            lines.append(f"| Critical | {attack_path_result.critical_chains} |")
+        if attack_path_result.high_chains > 0:
+            lines.append(f"| High | {attack_path_result.high_chains} |")
+        if attack_path_result.medium_chains > 0:
+            lines.append(f"| Medium | {attack_path_result.medium_chains} |")
+        if attack_path_result.low_chains > 0:
+            lines.append(f"| Low | {attack_path_result.low_chains} |")
+        lines.append("")
+        
+        # Key risks
+        if attack_path_result.top_risks:
+            lines.append("## Key Risks")
+            lines.append("")
+            for risk in attack_path_result.top_risks:
+                lines.append(f"- {risk}")
+            lines.append("")
+        
+        # Mermaid diagram for top chains
+        lines.append("## Attack Path Diagram")
+        lines.append("")
+        
+        mermaid_renderer = MermaidRenderer()
+        diagram = mermaid_renderer.render_result(attack_path_result, max_chains=5)
+        lines.append(diagram)
+        lines.append("")
+        
+        # Detailed paths
+        lines.append("## Detailed Attack Paths")
+        lines.append("")
+        
+        for i, chain in enumerate(attack_path_result.get_top_chains(10), 1):
+            lines.append(f"### Path {i}: {chain.name}")
+            lines.append("")
+            lines.append(f"**Risk Level:** {chain.risk_level.upper()}")
+            lines.append(f"**Score:** {chain.score:.1f}/10")
+            if chain.attack_type:
+                lines.append(f"**Attack Type:** {chain.attack_type}")
+            if chain.impact:
+                lines.append(f"**Potential Impact:** {chain.impact}")
+            lines.append("")
+            
+            # Chain steps
+            lines.append("**Attack Chain:**")
+            lines.append("")
+            for j, node in enumerate(chain.nodes, 1):
+                severity_str = f"[{node.severity.value.upper()}]" if node.severity else "[ASSET]"
+                lines.append(f"{j}. {severity_str} {node.label}")
+            lines.append("")
+            
+            # Mitigations
+            if chain.mitigations:
+                lines.append("**Mitigations:**")
+                lines.append("")
+                for mitigation in chain.mitigations:
+                    lines.append(f"- {mitigation}")
+                lines.append("")
+            
+            lines.append("---")
+            lines.append("")
+        
+        return ReportSection(
+            title="Attack Paths",
+            content="\n".join(lines),
+        )
+    
+    async def generate_full_report_with_paths(
+        self,
+        state: SessionState,
+        attack_path_result: Any = None,
+    ) -> ReportSection:
+        """
+        Generate a complete report including attack path visualization.
+        
+        Args:
+            state: Current session state
+            attack_path_result: Optional pre-computed AttackPathResult
+        
+        Returns:
+            ReportSection with full report including attack paths
+        """
+        self.log("Generating full report with attack paths")
+        
+        # Generate all sections
+        summary = await self.generate_executive_summary(state)
+        attack_paths = self.generate_attack_paths_section(state, attack_path_result)
+        findings = await self.generate_findings_section(state)
+        recommendations = await self.generate_recommendations_section(state)
+        
+        return ReportSection(
+            title=f"Security Assessment Report - {self.client_name}",
+            content=f"""
+# Security Assessment Report
+
+**Client:** {self.client_name}
+**Assessment Type:** {self.assessment_type}
+**Target:** {state.target}
+**Date:** {state.started_at.strftime("%Y-%m-%d")}
+
+---
+""",
+            subsections=[
+                ReportSection(
+                    title="Executive Summary",
+                    content=self._format_executive_summary(summary),
+                ),
+                attack_paths,
+                findings,
+                recommendations,
+                self._generate_methodology_section(),
+                self._generate_scope_section(state),
+            ],
+        )

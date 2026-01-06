@@ -42,10 +42,18 @@
 | **CMS Detection** | cmseek, wpscan |
 | **DNS** | dnsrecon, dnsx |
 
+### Attack Path Visualization
+- Automatic discovery of vulnerability chains
+- Hybrid analysis: rule-based patterns + LLM-assisted discovery
+- Visual diagrams showing how findings connect
+- Risk scoring (0-10) for prioritization
+- Multiple output formats: ASCII (CLI), Mermaid (reports), Plain text
+
 ### Professional Reporting
 - Markdown reports (Git-friendly)
 - HTML reports (Visual, shareable)
 - PDF reports (Professional, printable)
+- Attack path diagrams (Mermaid.js)
 - MITRE ATT&CK mapping
 - Executive summaries
 
@@ -126,6 +134,11 @@ jagabaya session list              # List all sessions
 jagabaya session list --resumable  # List only resumable sessions
 jagabaya session show <session-id> # Show session details
 
+# Attack path analysis
+jagabaya session paths <session-id>              # View attack paths (ASCII)
+jagabaya session paths <session-id> -f mermaid   # Generate Mermaid diagram
+jagabaya session paths <session-id> --no-llm    # Rule-based only (faster)
+
 # Resume interrupted scans
 jagabaya scan resume <session-id>
 jagabaya scan resume <session-id> --max-steps 200
@@ -149,6 +162,71 @@ Scan interrupted by user
 Session saved. Resume with:
   jagabaya scan resume abc123def456
 ```
+
+## Attack Path Visualization
+
+Jagabaya automatically discovers how vulnerabilities chain together into exploitable attack paths. This helps prioritize remediation by showing the real-world impact of combined findings.
+
+### Usage
+
+```bash
+# Analyze attack paths for a completed session
+jagabaya session paths <session-id>
+
+# Generate Mermaid diagram (for reports/documentation)
+jagabaya session paths <session-id> --format mermaid
+
+# Use only rule-based analysis (faster, no API calls)
+jagabaya session paths <session-id> --no-llm
+
+# Show more paths (default: 5)
+jagabaya session paths <session-id> --limit 10
+```
+
+### Example Output
+
+```
+Attack Path Analysis
+Found 7 paths: 2 Critical, 3 High, 2 Medium
+
+━━━ Path 1: RCE via Outdated Software ━━━
+  Risk: CRITICAL | Score: 9.2/10 | Steps: 3
+  Type: Remote Code Execution
+  Impact: Complete system compromise
+  Chain:
+  ├─ [HIGH] Apache 2.4.49 Detected
+  ├─ [CRITICAL] CVE-2021-41773 Path Traversal
+  └─ [CRITICAL] Remote Code Execution
+  Mitigations:
+    • Update Apache to latest version
+    • Apply security patches immediately
+```
+
+### Predefined Attack Patterns
+
+The engine recognizes 10 common attack chain patterns:
+
+| Pattern | Description |
+|---------|-------------|
+| Subdomain Takeover | Dangling DNS → Takeover |
+| RCE via Outdated Software | Version disclosure → CVE → RCE |
+| SQL Injection Chain | SQLi → Data extraction → Privilege escalation |
+| Authentication Bypass | Weak auth → Session hijacking → Account takeover |
+| XSS to Session Hijacking | XSS → Cookie theft → Session hijacking |
+| Information Disclosure | Info leak → Credential exposure → Access |
+| Network Pivot | Open ports → Internal access → Lateral movement |
+| SSL/TLS Weakness | Weak cipher → MITM → Data interception |
+| Directory Traversal to RCE | Path traversal → Config access → RCE |
+| Git Exposure | .git exposed → Source code → Secrets |
+
+### Hybrid Analysis
+
+Attack path discovery uses a hybrid approach:
+
+1. **Rule-based patterns**: Fast, deterministic matching against known attack chains
+2. **LLM-assisted discovery**: AI identifies novel attack paths specific to your target
+
+Use `--no-llm` for faster analysis without API calls when you only need rule-based patterns.
 
 ## Configuration
 

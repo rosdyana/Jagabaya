@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from jagabaya.agents.planner import PlannerAgent
 from jagabaya.agents.executor import ExecutorAgent
@@ -32,6 +32,9 @@ from jagabaya.models.session import (
 from jagabaya.models.findings import Finding
 from jagabaya.models.tools import ToolResult
 from jagabaya.tools.registry import ToolRegistry
+
+if TYPE_CHECKING:
+    from jagabaya.analysis.attack_paths import AttackPathResult
 
 
 class Orchestrator:
@@ -649,6 +652,91 @@ class Orchestrator:
             "key_insights": result.key_insights,
             "priority_targets": [t.model_dump() for t in result.priority_targets],
         }
+
+    async def analyze_attack_paths(
+        self,
+        session: SessionState | None = None,
+        use_llm: bool = True,
+    ) -> "AttackPathResult":
+        """
+        Run hybrid attack path analysis on session findings.
+
+        Combines rule-based pattern matching with LLM-enhanced discovery
+        to identify exploitable attack chains.
+
+        Args:
+            session: Session to analyze (uses current if not provided)
+            use_llm: Whether to use LLM for enhanced analysis
+
+        Returns:
+            AttackPathResult with discovered attack chains
+        """
+        from jagabaya.analysis.attack_paths import AttackPathResult
+        
+        session = session or self._current_session
+        if not session:
+            raise ValueError("No session available for attack path analysis")
+
+        self._log("Running attack path analysis...")
+        
+        result = await self.correlator.analyze_attack_paths(session, use_llm=use_llm)
+        
+        # Store in session metadata
+        session.metadata = getattr(session, 'metadata', None) or {}
+        session.metadata["attack_paths"] = {
+            "total_chains": result.total_chains,
+            "critical_chains": result.critical_chains,
+            "high_chains": result.high_chains,
+            "medium_chains": result.medium_chains,
+            "low_chains": result.low_chains,
+            "top_risks": result.top_risks,
+            "chains": [
+                {
+                    "id": c.id,
+                    "name": c.name,
+                    "score": c.score,
+                    "risk_level": c.risk_level,
+                    "attack_type": c.attack_type,
+                    "impact": c.impact,
+                    "nodes_count": len(c.nodes),
+                }
+                for c in result.get_top_chains(10)
+            ],
+        }
+        
+        self._log(f"Found {result.total_chains} attack paths")
+        
+        return result
+
+    def render_attack_paths(
+        self,
+        result: "AttackPathResult",
+        format: str = "ascii",
+    ) -> str:
+        """
+        Render attack paths for display.
+
+        Args:
+            result: Attack path analysis result
+            format: Output format ('ascii', 'mermaid', 'plain')
+
+        Returns:
+            Rendered attack paths string
+        """
+        from jagabaya.analysis.attack_paths import AttackPathResult
+        
+        if format == "mermaid":
+            from jagabaya.analysis.renderers import MermaidRenderer
+            renderer = MermaidRenderer()
+            return renderer.render_result(result)
+        elif format == "plain":
+            from jagabaya.analysis.renderers import ASCIIRenderer
+            renderer = ASCIIRenderer()
+            return renderer.to_plain_text(result)
+        else:
+            from jagabaya.analysis.renderers import ASCIIRenderer
+            renderer = ASCIIRenderer()
+            return renderer.render_compact(result)
 
     async def generate_report(
         self,

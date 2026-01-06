@@ -245,3 +245,111 @@ def session_export(
         console.print(f"[green]Exported to: {output_path}[/]")
     else:
         console.print(content)
+
+
+@app.command("paths")
+def session_paths(
+    session_id: str = typer.Argument(..., help="Session ID to analyze"),
+    format: str = typer.Option("ascii", "--format", "-f", help="Output format: ascii, mermaid, plain"),
+    limit: int = typer.Option(5, "--limit", "-n", help="Maximum paths to show"),
+    no_llm: bool = typer.Option(False, "--no-llm", help="Use only rule-based analysis (faster, no API calls)"),
+):
+    """
+    Analyze and display attack paths for a session.
+    
+    Identifies how findings chain together into exploitable attack paths.
+    Uses hybrid analysis (rule-based + LLM) by default.
+    
+    Examples:
+        jagabaya session paths ses_abc123
+        jagabaya session paths ses_abc123 --format mermaid
+        jagabaya session paths ses_abc123 --no-llm
+    """
+    import asyncio
+    from jagabaya.core.session import SessionManager
+    from jagabaya.analysis.attack_paths import AttackPathEngine
+    from jagabaya.analysis.renderers import ASCIIRenderer, MermaidRenderer
+
+    manager = SessionManager()
+    session = manager.load_session(session_id)
+
+    if not session:
+        console.print(f"[red]Session '{session_id}' not found[/]")
+        raise typer.Exit(1)
+
+    if not session.findings:
+        console.print("[yellow]No findings in this session to analyze[/]")
+        return
+
+    console.print(f"[bold]Analyzing attack paths for session {session_id}...[/]")
+    console.print(f"  Target: {session.target}")
+    console.print(f"  Findings: {len(session.findings)}")
+    console.print(f"  Assets: {len(session.discovered_assets)}")
+    console.print()
+
+    # Run analysis
+    if no_llm:
+        # Rule-based only (synchronous, no API calls)
+        console.print("[dim]Using rule-based analysis only[/]")
+        engine = AttackPathEngine(use_llm=False, verbose=False)
+        result = engine.analyze(session)
+    else:
+        # Hybrid analysis (needs async for LLM calls)
+        console.print("[dim]Using hybrid analysis (rules + LLM)[/]")
+        
+        async def run_hybrid():
+            from jagabaya.models.config import JagabayaConfig
+            from jagabaya.agents.correlator import CorrelatorAgent
+            
+            config = JagabayaConfig.load()
+            correlator = CorrelatorAgent(config=config.llm, verbose=False)
+            return await correlator.analyze_attack_paths(session, use_llm=True)
+        
+        try:
+            result = asyncio.run(run_hybrid())
+        except Exception as e:
+            console.print(f"[yellow]LLM analysis failed, falling back to rules: {e}[/]")
+            engine = AttackPathEngine(use_llm=False, verbose=False)
+            result = engine.analyze(session)
+
+    if not result.chains:
+        console.print("[dim]No attack paths identified in current findings[/]")
+        return
+
+    # Render output
+    console.print()
+    
+    if format == "mermaid":
+        renderer = MermaidRenderer()
+        output = renderer.render_result(result, max_chains=limit)
+        console.print(output)
+        console.print()
+        console.print("[dim]Copy the above Mermaid code to GitHub, GitLab, or Obsidian for visualization[/]")
+    elif format == "plain":
+        renderer = ASCIIRenderer()
+        output = renderer.to_plain_text(result, limit=limit)
+        console.print(output)
+    else:
+        renderer = ASCIIRenderer()
+        output = renderer.render_detailed(result, limit=limit)
+        console.print(output)
+
+    # Summary
+    console.print()
+    console.print("[bold]Summary[/]")
+    console.print(f"  Total paths: {result.total_chains}")
+    if result.critical_chains > 0:
+        console.print(f"  [red bold]Critical: {result.critical_chains}[/]")
+    if result.high_chains > 0:
+        console.print(f"  [orange1]High: {result.high_chains}[/]")
+    if result.medium_chains > 0:
+        console.print(f"  [yellow]Medium: {result.medium_chains}[/]")
+    if result.low_chains > 0:
+        console.print(f"  [blue]Low: {result.low_chains}[/]")
+
+    # Top risks
+    if result.top_risks:
+        console.print()
+        console.print("[bold]Key Risks[/]")
+        for risk in result.top_risks[:3]:
+            console.print(f"  • {risk}")
